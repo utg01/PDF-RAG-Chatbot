@@ -8,7 +8,6 @@ from langgraph.graph.message import add_messages
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.checkpoint.memory import MemorySaver
 
 from reranking_retrieval import Query_Handler
 
@@ -60,6 +59,5 @@ graph.add_conditional_edges(
 )
 graph.add_edge("tools", "chat")
 
-memory = MemorySaver()
-
-agent = graph.compile(checkpointer=memory)
+# graph compilation without checkpointer (stateless single-session)
+agent = graph.compile()

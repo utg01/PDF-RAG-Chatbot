@@ -1,143 +1,314 @@
-import streamlit as st
-import tempfile
+import os
+import json
 import uuid
+import tempfile
+import asyncio
+from pathlib import Path
+from dotenv import load_dotenv
+
+from starlette.applications import Starlette
+from starlette.routing import Route, Mount
+from starlette.staticfiles import StaticFiles
+from starlette.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse
+from starlette.requests import Request
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 
 from langchain_core.messages import HumanMessage, AIMessage
 
-
-#from agent import agent
+# Core RAG pipeline imports (without checkpointer)
 from advanced import agent
 from ingestion import Create_embeddings, delete_index
 
-st.set_page_config(
-    page_title="PDF RAG Chatbot",
-    page_icon="📄"
-)
+load_dotenv()
 
-st.title("📄 PDF RAG Chatbot with Caching and Reranking")
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
 
-if "pdf_uploaded" not in st.session_state:
-    st.session_state.pdf_uploaded = False
+SAMPLE_PDF_NAME = "Cloud SRE Handbook Generation Plan.pdf"
+SAMPLE_PDF_PATH = BASE_DIR / SAMPLE_PDF_NAME
+SAMPLE_INDEX_NAME = "pdf-cloud-sre-handbook-generation-plan-pdf"
 
-if "current_file" not in st.session_state:
-    st.session_state.current_file = None
+# In-memory mapping of active temporary sessions for ephemeral upload tracking & cleanup
+# format: session_id -> {"temp_path": str, "index_name": str, "file_name": str}
+active_sessions = {}
 
-if "current_index" not in st.session_state:
-    st.session_state.current_index = None
 
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = str(uuid.uuid4())
+async def serve_index(request: Request):
+    index_file = STATIC_DIR / "index.html"
+    if not index_file.exists():
+        return HTMLResponse("<h1>Index file not found</h1>", status_code=404)
+    return FileResponse(index_file)
 
-if "display_messages" not in st.session_state:
-    st.session_state.display_messages = []
 
-if not st.session_state.pdf_uploaded:
-    st.subheader("Upload a PDF to get started")
-    st.info(
-        "The chatbot currently works with text-based PDFs, "
-        "not scanned/image-only PDFs."
+async def sample_pdf_info(request: Request):
+    """
+    Returns the pre-embedded sample PDF metadata.
+    0 ms wait time for recruiters - vectors already intact in Pinecone.
+    """
+    if not SAMPLE_PDF_PATH.exists():
+        return JSONResponse({"status": "error", "message": "Sample PDF file not found on disk"}, status_code=404)
+
+    session_id = str(uuid.uuid4())
+    return JSONResponse({
+        "status": "success",
+        "file_name": SAMPLE_PDF_NAME,
+        "title": "Cloud Infrastructure Incident Response & Reliability Handbook",
+        "description": "OmniScale Systems engineering manual covering incident classification, SLOs, Tier-1 runbooks, and failover topologies.",
+        "index_name": SAMPLE_INDEX_NAME,
+        "session_id": session_id,
+        "pre_embedded": True,
+        "vector_count": 114,
+        "pages": 23,
+        "file_size": f"{SAMPLE_PDF_PATH.stat().st_size / 1024:.1f} KB",
+        "sample_questions": [
+            "What are the severity levels for incidents in this handbook?",
+            "What is the SLO and error budget policy?",
+            "Summarize the Tier-1 incident response procedure.",
+            "Describe the automated failover architecture."
+        ]
+    })
+
+
+async def download_sample_pdf(request: Request):
+    """
+    Serves the pre-embedded sample PDF directly for in-app viewing or download.
+    """
+    if not SAMPLE_PDF_PATH.exists():
+        return JSONResponse({"error": "Sample PDF not found"}, status_code=404)
+
+    return FileResponse(
+        SAMPLE_PDF_PATH,
+        media_type="application/pdf",
+        filename=SAMPLE_PDF_NAME,
+        headers={"Content-Disposition": f'inline; filename="{SAMPLE_PDF_NAME}"'}
     )
 
-    uploaded_file = st.file_uploader(
-        "Choose a PDF",
-        type=["pdf"]
-    )
 
-    if uploaded_file:
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".pdf"
-        ) as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
-            temp_path = tmp_file.name
+async def upload_pdf(request: Request):
+    """
+    Handles custom user PDF upload strictly as a temporary file.
+    No permanent folder on disk: uses OS tempfile and schedules cleanup.
+    """
+    temp_path = None
+    try:
+        form = await request.form()
+        uploaded_file = form.get("file")
 
-        with st.spinner("Processing PDF and creating embeddings..."):
-            result = Create_embeddings.invoke({
+        if not uploaded_file:
+            return JSONResponse({"status": "error", "message": "No file uploaded"}, status_code=400)
+
+        filename = uploaded_file.filename
+        if not filename.lower().endswith(".pdf"):
+            return JSONResponse({"status": "error", "message": "Only PDF files are supported"}, status_code=400)
+
+        contents = await uploaded_file.read()
+        if len(contents) == 0:
+            return JSONResponse({"status": "error", "message": "Uploaded file is empty"}, status_code=400)
+
+        # Write to OS temporary file (ephemeral, not in project repo)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(contents)
+            temp_path = tmp.name
+
+        session_id = str(uuid.uuid4())
+
+        # Run ingestion pipeline in background thread to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: Create_embeddings.invoke({
                 "file_path": temp_path,
-                "file_name": uploaded_file.name
+                "file_name": filename
             })
-
-        st.session_state.current_file = uploaded_file.name
-        st.session_state.current_index = result['index_name']
-        st.session_state.pdf_uploaded = True
-
-        st.success("PDF processed successfully!")
-        st.rerun()
-
-else:
-    st.subheader(f"📄 {st.session_state.current_file}")
-
-    config = {
-        "configurable": {
-            "thread_id": st.session_state.thread_id,
-            "index_name": st.session_state.current_index
-        },
-        "recursion_limit": 20
-    }
-
-    col1, col2 = st.columns([3, 1])
-
-    with col1:
-        st.caption(
-            f"Thread: {st.session_state.thread_id[:8]}..."
         )
 
-    with col2:
-        if st.button("＋ New Chat"):
-            st.session_state.thread_id = str(uuid.uuid4())
-            st.session_state.display_messages = []
-            st.rerun()
+        if isinstance(result, str):
+            # Error returned from Create_embeddings
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+            return JSONResponse({"status": "error", "message": result}, status_code=500)
 
-    for message in st.session_state.display_messages:
-        if isinstance(message, HumanMessage):
-            with st.chat_message("user"):
-                st.markdown(message.content)
+        # Track session temporarily for viewing and exit cleanup
+        active_sessions[session_id] = {
+            "temp_path": temp_path,
+            "index_name": result["index_name"],
+            "file_name": filename
+        }
 
-        elif isinstance(message, AIMessage) and message.content:
-            with st.chat_message("assistant"):
-                st.markdown(message.content)
+        return JSONResponse({
+            "status": "success",
+            "session_id": session_id,
+            "file_name": filename,
+            "index_name": result["index_name"],
+            "pre_embedded": False
+        })
 
-    humanmsg = st.chat_input("Ask anything about your PDF...")
+    except Exception as e:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
-    if humanmsg:
-        user_message = HumanMessage(content=humanmsg)
 
-        st.session_state.display_messages.append(user_message)
+async def view_uploaded_pdf(request: Request):
+    """
+    Serves the ephemeral temporary PDF for preview while the session is open.
+    """
+    session_id = request.path_params.get("session_id")
+    session_info = active_sessions.get(session_id)
 
-        with st.chat_message("user"):
-            st.markdown(humanmsg)
+    if not session_info or not os.path.exists(session_info["temp_path"]):
+        return JSONResponse({"error": "Temporary file not found or expired"}, status_code=404)
 
-        with st.chat_message("assistant"):
-            response_placeholder = st.empty()
-            full_response = ""
+    return FileResponse(
+        session_info["temp_path"],
+        media_type="application/pdf",
+        filename=session_info["file_name"],
+        headers={"Content-Disposition": f'inline; filename="{session_info["file_name"]}"'}
+    )
 
-            for chunk in agent.stream(
-                {"messages": [user_message]},
-                config=config,
-                stream_mode="messages"
-            ):
-                message, metadata = chunk
 
-                if isinstance(message, AIMessage) and message.content:
-                    full_response += message.content
-                    response_placeholder.markdown(full_response)
+async def chat_stream(request: Request):
+    """
+    Streaming chat endpoint using Server-Sent Events (SSE).
+    Stateless per-request execution without checkpointer.
+    """
+    try:
+        body = await request.json()
+        message = body.get("message", "").strip()
+        session_id = body.get("session_id") or str(uuid.uuid4())
+        index_name = body.get("index_name")
 
-            final_response = AIMessage(
-                content=full_response
+        if not message:
+            return JSONResponse({"error": "Empty message"}, status_code=400)
+        if not index_name:
+            return JSONResponse({"error": "No index selected"}, status_code=400)
+
+        config = {
+            "configurable": {
+                "thread_id": session_id,
+                "index_name": index_name
+            },
+            "recursion_limit": 20
+        }
+
+        user_message = HumanMessage(content=message)
+
+        async def event_generator():
+            try:
+                # Stream messages from LangGraph agent asynchronously (stateless execution)
+                async for chunk in agent.astream(
+                    {"messages": [user_message]},
+                    config=config,
+                    stream_mode="messages"
+                ):
+                    msg, metadata = chunk
+                    if isinstance(msg, AIMessage) and msg.content:
+                        payload = json.dumps({"text": msg.content})
+                        yield f"data: {payload}\n\n"
+
+                yield "data: [DONE]\n\n"
+            except Exception as err:
+                err_payload = json.dumps({"error": str(err)})
+                yield f"data: {err_payload}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def cleanup_session(request: Request):
+    """
+    Invoked when the user closes the website or ends their session:
+    - Automatically deletes the temporary Pinecone index from Pinecone.
+    - Removes the temporary PDF file from the OS temp directory.
+    - Protects the pre-embedded sample handbook index from being deleted.
+    """
+    try:
+        # Accepts standard JSON or navigator.sendBeacon raw text
+        body_bytes = await request.body()
+        index_name = None
+        session_id = None
+
+        if body_bytes:
+            try:
+                data = json.loads(body_bytes.decode("utf-8"))
+                index_name = data.get("index_name")
+                session_id = data.get("session_id")
+            except Exception:
+                pass
+
+        # Also check session dictionary if session_id passed
+        if session_id and session_id in active_sessions:
+            info = active_sessions.pop(session_id)
+            if not index_name:
+                index_name = info.get("index_name")
+            temp_path = info.get("temp_path")
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+
+        # Protect the sample index
+        if index_name == SAMPLE_INDEX_NAME:
+            return JSONResponse({
+                "status": "preserved",
+                "message": "Sample pre-embedded index is permanently preserved."
+            })
+
+        # Delete user custom index from Pinecone
+        if index_name:
+            loop = asyncio.get_event_loop()
+            res = await loop.run_in_executor(
+                None,
+                lambda: delete_index.invoke({"index_name": index_name})
             )
+            return JSONResponse({"status": "deleted", "result": res})
 
-        st.session_state.display_messages.append(
-            final_response
-        )
+        return JSONResponse({"status": "ok", "message": "Session cleaned up"})
 
-    st.divider()
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
-    if st.button("End Session"):
-        if st.session_state.current_index:
-            delete_index.invoke({
-                "index_name": st.session_state.current_index
-            })
 
-        st.session_state.clear()
-        st.rerun()
+routes = [
+    Route("/", endpoint=serve_index, methods=["GET"]),
+    Route("/api/sample", endpoint=sample_pdf_info, methods=["GET"]),
+    Route("/api/pdf/sample", endpoint=download_sample_pdf, methods=["GET"]),
+    Route("/api/upload", endpoint=upload_pdf, methods=["POST"]),
+    Route("/api/pdf/session/{session_id}", endpoint=view_uploaded_pdf, methods=["GET"]),
+    Route("/api/chat", endpoint=chat_stream, methods=["POST"]),
+    Route("/api/session/cleanup", endpoint=cleanup_session, methods=["POST"]),
+    Mount("/static", app=StaticFiles(directory=str(STATIC_DIR)), name="static"),
+]
 
+middleware = [
+    Middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"]
+    )
+]
+
+app = Starlette(debug=False, routes=routes, middleware=middleware)
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    print(f"Starting PDF RAG Web Server on http://0.0.0.0:{port}")
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)

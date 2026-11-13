@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DocRAG // Cloud SRE Incident & Reliability Workbench</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Minimalist markdown renderer -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand">
+          <svg class="icon mark" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span class="brand-title">DocRAG</span>
+          <span class="brand-sub">Workbench</span>
+        </div>
+
+        <div id="header-doc-badge" class="header-doc-pill hidden">
+          <span class="status-dot"></span>
+          <span id="header-doc-name" class="doc-name">Cloud SRE Handbook</span>
+          <span id="header-doc-type" class="badge">Pre-embedded</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button id="btn-view-pdf" class="btn btn-secondary btn-sm hidden">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span>View PDF</span>
+        </button>
+
+        <a id="btn-download-pdf" href="/api/pdf/sample" download class="btn btn-secondary btn-sm hidden">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Download</span>
+        </a>
+
+        <button id="btn-switch-doc" class="btn btn-ghost btn-sm hidden">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <polyline points="1 4 1 10 7 10"/>
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+          </svg>
+          <span>End session</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="app-main">
+      <!-- VIEW 1: LANDING & RECRUITER QUICK START -->
+      <section id="view-landing" class="landing-view">
+        <div class="hero-intro">
+          <div class="meta-label">Retrieval-Augmented Generation Architecture</div>
+          <h1 class="hero-headline">Grounded technical document question answering</h1>
+          <p class="hero-description">
+            Multi-stage retrieval using Mistral embeddings, Pinecone MMR search, BGE Reranker v2, and query caching powered by Groq Llama 3 / GPT-OSS.
+          </p>
+        </div>
+
+        <div class="landing-grid">
+          <!-- CARD 1: RECRUITER INSTANT TEST (PRE-EMBEDDED) -->
+          <div class="action-card featured">
+            <div class="card-tag-row">
+              <span class="tag tag-accent">Recruiter Quick Start</span>
+              <span class="tag tag-success">Pre-embedded · 0ms wait</span>
+            </div>
+
+            <div class="card-body">
+              <h2 class="card-title">Test with Cloud SRE Handbook</h2>
+              <p class="card-text">
+                OmniScale Systems Cloud Infrastructure Incident Response & Service Reliability Handbook. The embeddings and vector database are already created and live in Pinecone for instant evaluation.
+              </p>
+
+              <div class="meta-specs">
+                <div class="spec-item">
+                  <span class="spec-label">Document</span>
+                  <span class="spec-val">Cloud SRE Handbook Generation Plan.pdf</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Pinecone Index</span>
+                  <span class="spec-val font-mono">pdf-cloud-sre-handbook...</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Indexed Vectors</span>
+                  <span class="spec-val font-mono">114 chunks (1024-dim)</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Reranker</span>
+                  <span class="spec-val font-mono">bge-reranker-v2-m3</span>
+                </div>
+              </div>
+
+              <div class="card-actions">
+                <button id="btn-start-sample" class="btn btn-primary">
+                  <span>Start demo with sample PDF</span>
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                    <polyline points="12 5 19 12 12 19"/>
+                  </svg>
+                </button>
+
+                <button id="btn-preview-sample" class="btn btn-secondary">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  <span>Preview PDF</span>
+                </button>
+              </div>
+
+              <!-- Suggested Questions Preview -->
+              <div class="sample-queries-box">
+                <div class="sample-queries-title">Suggested questions to test retrieval accuracy:</div>
+                <ul class="sample-queries-list">
+                  <li class="sample-query-item" data-query="What are the severity levels for incidents in this handbook?">
+                    <span>What are the severity levels for incidents in this handbook?</span>
+                    <span class="arrow">→</span>
+                  </li>
+                  <li class="sample-query-item" data-query="What is the SLO and error budget policy?">
+                    <span>What is the SLO and error budget policy?</span>
+                    <span class="arrow">→</span>
+                  </li>
+                  <li class="sample-query-item" data-query="Summarize the Tier-1 incident response procedure.">
+                    <span>Summarize the Tier-1 incident response procedure.</span>
+                    <span class="arrow">→</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD 2: UPLOAD CUSTOM PDF -->
+          <div class="action-card">
+            <div class="card-tag-row">
+              <span class="tag">Custom Document</span>
+              <span class="tag">Text PDFs</span>
+            </div>
+
+            <div class="card-body">
+              <h2 class="card-title">Upload your own PDF</h2>
+              <p class="card-text">
+                Upload a text-based PDF from your system. The pipeline extracts text, generates 1,000-char chunks with Mistral embeddings, and provisions an isolated Pinecone index.
+              </p>
+
+              <div id="drop-zone" class="drop-zone">
+                <input type="file" id="file-input" accept=".pdf" class="file-input-hidden">
+                <svg class="icon drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/>
+                  <path d="M12 12v9"/>
+                  <path d="m16 16-4-4-4 4"/>
+                </svg>
+                <div class="drop-text">
+                  <span class="drop-primary">Choose PDF file</span> or drag and drop here
+                </div>
+                <span class="drop-sub">Text-based PDF up to 25 MB</span>
+              </div>
+
+              <div id="upload-status" class="upload-status hidden">
+                <div class="spinner"></div>
+                <span id="upload-status-text">Processing PDF and generating embeddings...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: CHAT WORKSPACE -->
+      <section id="view-chat" class="chat-view hidden">
+        <!-- Sidebar -->
+        <aside class="chat-sidebar">
+          <div class="sidebar-section">
+            <div class="sidebar-label">Active Document</div>
+            <div class="sidebar-doc-card">
+              <div class="doc-icon-wrap">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+              </div>
+              <div class="doc-meta-info">
+                <div id="sidebar-doc-title" class="doc-filename">Cloud SRE Handbook Generation Plan.pdf</div>
+                <div id="sidebar-doc-meta" class="doc-specs">114 chunks · Pre-embedded</div>
+              </div>
+            </div>
+
+            <div class="doc-action-btns">
+              <button id="sidebar-btn-view" class="btn btn-secondary btn-sm w-full">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <span>Read source PDF</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="sidebar-label">Suggested Prompts</div>
+            <div class="quick-prompts-list">
+              <button class="quick-prompt-btn" data-query="What are the severity levels for incidents in this handbook?">
+                <span>Incident severity levels</span>
+              </button>
+              <button class="quick-prompt-btn" data-query="What is the SLO and error budget policy?">
+                <span>SLO & error budget policy</span>
+              </button>
+              <button class="quick-prompt-btn" data-query="Summarize the Tier-1 incident response procedure.">
+                <span>Tier-1 incident response</span>
+              </button>
+              <button class="quick-prompt-btn" data-query="Describe the automated failover architecture.">
+                <span>Failover architecture</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-section mt-auto">
+            <div class="sidebar-label">Pipeline Specs</div>
+            <div class="pipeline-spec-box">
+              <div class="spec-row">
+                <span class="k">LLM</span>
+                <span class="v">Groq gpt-oss-120b</span>
+              </div>
+              <div class="spec-row">
+                <span class="k">Embeddings</span>
+                <span class="v">Mistral 1024-dim</span>
+              </div>
+              <div class="spec-row">
+                <span class="k">Retrieval</span>
+                <span class="v">MMR + BGE Reranker v2</span>
+              </div>
+              <div class="spec-row">
+                <span class="k">Caching</span>
+                <span class="v">>0.85 similarity threshold</span>
+              </div>
+            </div>
+
+            <button id="btn-new-chat" class="btn btn-ghost btn-sm w-full mt-12">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M3 6h18"/>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+              </svg>
+              <span>Clear conversation</span>
+            </button>
+          </div>
+        </aside>
+
+        <!-- Conversation Column -->
+        <div class="chat-column">
+          <!-- Messages Scrollable Feed -->
+          <div id="messages-container" class="messages-container">
+            <div class="chat-welcome-banner">
+              <div class="welcome-tag">Ready for queries</div>
+              <div class="welcome-text">
+                Ask any question grounded in <strong id="welcome-doc-name">Cloud SRE Handbook</strong>. The agent retrieves matching chunks, reranks them using BGE v2, and answers strictly from the document context.
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Dock -->
+          <div class="input-dock">
+            <form id="chat-form" class="chat-form">
+              <div class="input-wrapper">
+                <textarea
+                  id="chat-input"
+                  rows="1"
+                  placeholder="Ask a question about this document..."
+                  autocomplete="off"
+                ></textarea>
+                <div class="input-controls">
+                  <span class="key-hint"><kbd>Enter</kbd> to send</span>
+                  <button type="submit" id="btn-send" class="btn btn-primary btn-icon" disabled>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <line x1="22" y1="2" x2="11" y2="13"/>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- PDF Viewer Modal / Drawer -->
+    <div id="pdf-modal" class="modal-backdrop hidden">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div class="modal-title-wrap">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span id="modal-doc-title">Document Preview</span>
+          </div>
+
+          <div class="modal-actions">
+            <a id="modal-external-link" href="/api/pdf/sample" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+              <span>Open in new tab</span>
+            </a>
+            <button id="modal-btn-close" class="btn btn-ghost btn-sm btn-icon">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-body">
+          <iframe id="pdf-viewer-frame" src="" title="PDF Viewer"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

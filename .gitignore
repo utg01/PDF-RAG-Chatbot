@@ -1,5 +1,24 @@
+# Python virtual environments & bytecode
 venv/
 .venv/
+env/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.log
+
+# Sensitive environment variables and secrets
 .env
+.env.*
+!.env.example
+*.env
+
+# Ephemeral uploads and local backups
+uploads/
+app_streamlit_backup.py
+
+# OS / Editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
