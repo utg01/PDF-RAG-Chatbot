@@ -24,6 +24,7 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+PUBLIC_DIR = BASE_DIR / "public"
 
 SAMPLE_PDF_NAME = "Cloud SRE Handbook Generation Plan.pdf"
 SAMPLE_PDF_PATH = BASE_DIR / SAMPLE_PDF_NAME
@@ -34,11 +35,43 @@ SAMPLE_INDEX_NAME = "pdf-cloud-sre-handbook-generation-plan-pdf"
 active_sessions = {}
 
 
+def load_index_html():
+    """Robust index.html loader checking static and public locations."""
+    candidate_paths = [
+        STATIC_DIR / "index.html",
+        PUBLIC_DIR / "index.html",
+        BASE_DIR / "index.html",
+        Path("/var/task/static/index.html"),
+        Path("/var/task/public/index.html")
+    ]
+    for path in candidate_paths:
+        if path.exists():
+            try:
+                return path.read_text(encoding="utf-8")
+            except Exception:
+                pass
+    return None
+
+
 async def serve_index(request: Request):
-    index_file = STATIC_DIR / "index.html"
-    if not index_file.exists():
-        return HTMLResponse("<h1>Index file not found</h1>", status_code=404)
-    return FileResponse(index_file)
+    html_content = load_index_html()
+    if html_content:
+        return HTMLResponse(html_content, status_code=200)
+    return HTMLResponse("<h1>DocRAG Workbench: Index file not found</h1>", status_code=404)
+
+
+async def serve_style(request: Request):
+    for p in (STATIC_DIR / "style.css", PUBLIC_DIR / "style.css", Path("/var/task/static/style.css")):
+        if p.exists():
+            return FileResponse(p, media_type="text/css")
+    return HTMLResponse("/* style */", media_type="text/css")
+
+
+async def serve_app_js(request: Request):
+    for p in (STATIC_DIR / "app.js", PUBLIC_DIR / "app.js", Path("/var/task/static/app.js")):
+        if p.exists():
+            return FileResponse(p, media_type="application/javascript")
+    return HTMLResponse("// app.js", media_type="application/javascript")
 
 
 async def sample_pdf_info(request: Request):
@@ -286,13 +319,39 @@ async def cleanup_session(request: Request):
 
 
 routes = [
+    # Main UI entrypoints
     Route("/", endpoint=serve_index, methods=["GET"]),
+    Route("/index", endpoint=serve_index, methods=["GET"]),
+    Route("/api", endpoint=serve_index, methods=["GET"]),
+    Route("/api/index", endpoint=serve_index, methods=["GET"]),
+    Route("/api/index.py", endpoint=serve_index, methods=["GET"]),
+
+    # Static CSS and JS fallbacks
+    Route("/style.css", endpoint=serve_style, methods=["GET"]),
+    Route("/app.js", endpoint=serve_app_js, methods=["GET"]),
+    Route("/static/style.css", endpoint=serve_style, methods=["GET"]),
+    Route("/static/app.js", endpoint=serve_app_js, methods=["GET"]),
+
+    # API endpoints (both with and without /api/ prefix for proxy flexibility)
     Route("/api/sample", endpoint=sample_pdf_info, methods=["GET"]),
+    Route("/sample", endpoint=sample_pdf_info, methods=["GET"]),
+
     Route("/api/pdf/sample", endpoint=download_sample_pdf, methods=["GET"]),
+    Route("/pdf/sample", endpoint=download_sample_pdf, methods=["GET"]),
+
     Route("/api/upload", endpoint=upload_pdf, methods=["POST"]),
+    Route("/upload", endpoint=upload_pdf, methods=["POST"]),
+
     Route("/api/pdf/session/{session_id}", endpoint=view_uploaded_pdf, methods=["GET"]),
+    Route("/pdf/session/{session_id}", endpoint=view_uploaded_pdf, methods=["GET"]),
+
     Route("/api/chat", endpoint=chat_stream, methods=["POST"]),
+    Route("/chat", endpoint=chat_stream, methods=["POST"]),
+
     Route("/api/session/cleanup", endpoint=cleanup_session, methods=["POST"]),
+    Route("/session/cleanup", endpoint=cleanup_session, methods=["POST"]),
+
+    # Mount static directories
     Mount("/static", app=StaticFiles(directory=str(STATIC_DIR)), name="static"),
 ]
 
